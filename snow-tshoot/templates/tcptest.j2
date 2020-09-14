@@ -1,0 +1,4 @@
+$tcp_test = Test-NetConnection -port {{ tcp_port }} -ComputerName {{ test_url}} -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+
+# Write-Host $tcp_test
+$tcp_test

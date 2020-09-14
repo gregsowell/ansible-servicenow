@@ -1,0 +1,5 @@
+$web_ip = nslookup -type=A {{ test_url | regex_search("^(?:https?:)?(?:\/\/)?(?:[^@\n]+@)?([^:\/\n]+)") | regex_replace("http://")  | regex_replace("https://") }} | findstr Address
+
+$web_ip = $web_ip -replace "dresses","dress"
+
+Write-Host $web_ip[1]

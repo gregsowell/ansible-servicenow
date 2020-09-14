@@ -1,0 +1,145 @@
+---
+  - name: copy clientip file
+    win_template:
+      src: clientip.j2
+      dest: C:\scripts\clientip.ps1
+
+  - name: Resolve client name
+    win_shell: powershell C:\scripts\clientip.ps1
+    register: client_ip
+
+#  - name: debug to print client_ip
+#    debug:
+#      var: client_ip
+
+  - name: block when IP resolves
+    when: client_ip.stderr == ""
+    block:
+    - name: copy tcptest file
+      win_template:
+        src: tcptest.j2
+        dest: C:\scripts\tcptest.ps1
+
+    - name: Test tcp from affected user
+      win_shell: 'powershell Invoke-Command -ComputerName {{ test_client }} -FilePath C:\scripts\tcptest.ps1'
+      register: tcp_test1
+#      failed_when: "'TcpTestSucceeded' not in tcp_test1.stdout" and "'TestNetConnectionResult' not in tcp_test1.stdout"
+      failed_when: 
+        - "'TcpTestSucceeded' not in tcp_test1.stdout"
+        - "'TestNetConnectionResult' not in tcp_test1.stdout"
+
+#    - name: debug to print tcp_test1
+#      debug:
+#        var: tcp_test1
+
+    - name: save web_test1 as yaml
+#      when: "'WARNING' not in tcp_test1.stdout"
+      set_fact: 
+        tcp_test1_y: "{{ tcp_test1.stdout | from_yaml }}"
+
+#    - name: debug to print tcp_test1_y
+#      debug:
+#        var: tcp_test1_y
+
+    - name: Test tcp from windows control node
+      win_shell: powershell C:\scripts\tcptest.ps1
+      register: tcp_test2
+      failed_when:
+        - "'TcpTestSucceeded' not in tcp_test2.stdout"
+        - "'TestNetConnectionResult' not in tcp_test2.stdout"
+
+#    - name: debug to print tcp_test2
+#      debug:
+#        var: tcp_test2
+
+    - name: save tcp_test2 as yaml
+#      when: "'WARNING' not in tcp_test2.stdout"
+      set_fact: 
+        tcp_test2_y: "{{ tcp_test2.stdout | from_yaml }}"
+
+#    - name: debug to print tcp_test2_y
+#      debug:
+#        var: tcp_test2_y
+
+    - name: Test browsing from outside canary 
+      win_shell: 'powershell Invoke-Command -ComputerName {{ test_canary }} -FilePath C:\scripts\tcptest.ps1'
+      register: tcp_test3
+      failed_when:
+        - "'TcpTestSucceeded' not in tcp_test3.stdout"
+        - "'TestNetConnectionResult' not in tcp_test3.stdout"
+
+#    - name: debug to print tcp_test3
+#      debug:
+#        var: tcp_test3
+
+    - name: save web_test3 as yaml
+#      when: "'WARNING' not in tcp_test3.stdout"
+      set_fact: 
+        tcp_test3_y: "{{ tcp_test3.stdout | from_yaml }}"
+
+#    - name: debug to print tcp_test3_y
+#      debug:
+#        var: tcp_test3_y
+
+    - name: check firewall if either fails above
+      when: 
+#        - (tcp_test1_y.TcpTestSucceeded == "False" or tcp_test2_y.TcpTestSucceeded == "False")
+#        - ("'WARNING' in tcp_test1.stdout" or "'WARNING' in tcp_test2.stdout")
+#        -  (tcp_test1_y.TcpTestSucceeded == "False" or tcp_test2_y.TcpTestSucceeded == "False")
+        -  (tcp_test1_y.TcpTestSucceeded == false or tcp_test2_y.TcpTestSucceeded == false)
+      delegate_to: asav
+      asa_command: 
+        commands:
+# I added fqdn for dns names
+          - "packet-tracer input inside tcp {{ client_ip.stdout_lines[0] }} 30000 fqdn {{ test_url }} {{ tcp_port }}"
+      register: firewall_res
+
+#    - name: print firewall_res if it exists
+#      when: firewall_res is defined
+#      debug:
+#        var: firewall_res
+
+#  Block for result actions
+    - name: all worked
+      when: 
+        - tcp_test1_y.TcpTestSucceeded == true
+        - tcp_test2_y.TcpTestSucceeded == true
+        - tcp_test3_y.TcpTestSucceeded == true
+      debug:
+        msg: All tests clean - tell customer - set to help desk
+
+    - name: client fails everything else works
+      when: 
+        - tcp_test1_y.TcpTestSucceeded == false
+        - tcp_test2_y.TcpTestSucceeded == true
+        - tcp_test3_y.TcpTestSucceeded == true
+        - firewall_res.stdout is search("allow")
+      debug:
+        msg: Client fails all else works - set to service desk
+
+    - name: client/firewall fails but others work
+      when: 
+        - tcp_test1_y.TcpTestSucceeded == false
+        - tcp_test2_y.TcpTestSucceeded == true
+#        - tcp_test3_y.TcpTestSucceeded == true
+        - firewall_res.stdout is not search("allow")
+      debug:
+        msg: Client/firewall fails all else works - set to network
+
+    - name: client/control fails but external passes
+      when: 
+        - tcp_test1_y.TcpTestSucceeded == false
+        - tcp_test2_y.TcpTestSucceeded == false
+        - tcp_test3_y.TcpTestSucceeded == true
+        - firewall_res.stdout is search("allow")
+      debug:
+        msg: Client/control fails external works - set to network
+
+    - name: everything fails ignoring firewall
+      when: 
+        - tcp_test1_y.TcpTestSucceeded == false
+        - tcp_test2_y.TcpTestSucceeded == false
+        - tcp_test3_y.TcpTestSucceeded == false
+#        - firewall_res.stdout is search("allow")
+      debug:
+        msg: everything fails ignoring firewall - set to network

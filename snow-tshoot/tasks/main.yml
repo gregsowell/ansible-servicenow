@@ -1,0 +1,68 @@
+---
+# tasks file for snow-tshoot
+# connect to snow and pull most recent request(this will provide username and req number)
+- name: connect to SNOW for user/request number
+  delegate_to: localhost
+  shell: >
+    curl "https://{{ snow_instance }}.service-now.com/api/now/table/sc_request?sysparm_query=ORDERBYDESCnumber&sysparm_fields=number%2Csys_created_by&sysparm_limit=1"
+    --request GET
+    --header "Accept:application/json"
+    --user {{ snow_username }}:{{ snow_password }}
+  register: snow_req
+
+# - name: debug snow_req
+#   debug:
+#     var: snow_req
+#     msg: "{{ snow_req.stdout | from_json }}"
+
+- name: setfact for json to yaml snow_req
+  set_fact:
+    snow_req_y: "{{ snow_req.stdout | from_json }}"
+
+# - name: debug snow_req_y
+#   debug:
+#     msg: "{{ snow_req_y.result[0].number }} and {{ snow_req_y.result[0].sys_created_by }}"
+
+# check to see if ports are defined, if yes, go to TCP port tshooting, if no go to web tshooting
+# the below zeros are in quotes because when numbers are passed from snow they come in as strings
+- name: TCP port tshooting
+  when: tcp_port != "0"
+  include_tasks: win-tshoot-tcp.yml
+
+- name: Web page tshooting
+  when: tcp_port == "0"
+  include_tasks: win-tshoot-web.yml
+
+- name: snow ticket debug values
+  debug:
+    msg: |
+      "Automated Troubleshooting Req {{ snow_req_y.result[0].number }}"
+      "{{ snow_req_y.result[0].sys_created_by }}"
+      "{{ res_group }}"
+      "{{ res_message }}\n"
+
+# now time to create the incident and assign it to a group
+- name: Create an incident
+  delegate_to: localhost
+  snow_record:
+    username: "{{ snow_username }}"
+    password: "{{ snow_password }}"
+    instance: "{{ snow_instance }}"
+    state: present
+    data:
+      short_description: "Automated Troubleshooting Req {{ snow_req_y.result[0].number }}"
+      caller_id: "{{ snow_req_y.result[0].sys_created_by }}"
+      severity: 3
+      priority: 5
+      assignment_group: "{{ res_group }}"
+      comments: "{{ res_message }}\n"  
+#      sys_created_by: "{{ snow_req_y.result[0].sys_created_by }}"
+  register: new_incident
+
+- name: set ticket number variable
+  set_fact:
+    ticket_number: "{{ new_incident.record.number }}"
+
+- name: print ticket number
+  debug:
+    var: ticket_number

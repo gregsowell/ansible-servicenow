@@ -1,0 +1,9 @@
+#$curl_res = Invoke-WebRequest {{ test_url }}
+#$curl_res = Invoke-WebRequest {{ test_url }} | Select-Object StatusCode,RawContentLength
+$curl_res1 = Invoke-WebRequest {{ test_url }} -UseBasicParsing -TimeoutSec 8 | Select-Object -Expand StatusCode
+$curl_res2 = Invoke-WebRequest {{ test_url }} -UseBasicParsing -TimeoutSec 8 | Select-Object -Expand RawContentLength
+
+# Write-Host "status_code: $curl_res.StatusCode"
+# Write-Host "raw_length: $curl_res.RawContentLength"
+Write-Host "status_code: $curl_res1"
+Write-Host "raw_length: $curl_res2"

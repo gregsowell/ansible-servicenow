@@ -1,0 +1,7 @@
+$client_ip = Resolve-DnsName -Name {{ test_client }} -Type A
+
+if (-NOT ($client_ip.IPAddress[0] -eq "1\n")) {
+  Write-Host $client_ip.IPAddress
+} else {
+  Write-Host $client_ip.IPAddress[0]
+}

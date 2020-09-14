@@ -1,0 +1,18 @@
+---
+# defaults file for snow-tshoot
+
+# adjust this port when using tcp port tshooting, otherwise leave 0
+tcp_port: 0
+
+# change this to whatever the test target is(web or tcp based)
+test_url: gregsowell.com
+
+# change this to the client you are having issues from
+test_client: client1
+
+# this is the outside of your network test client
+test_canary: client2
+
+# working variables
+res_message: Empty
+res_group: Empty
